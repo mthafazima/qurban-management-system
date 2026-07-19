@@ -18,9 +18,10 @@
           <h1>Riwayat Penukaran</h1>
           <div class="subtitle" id="totalSubtitle">Memuat data...</div>
         </div>
-        <div class="topbar-actions" id="masjidSwitcherWrap">
+        <div class="topbar-actions">
           <button class="btn btn-outline btn-sm" id="btnExportHistory">Export Riwayat (CSV)</button>
           <button class="btn btn-outline btn-sm" id="btnExportAll">Export Semua Kupon (CSV)</button>
+          <span id="masjidSwitcherWrap"></span>
         </div>
       </div>
 
@@ -45,7 +46,7 @@
     const session = renderShell("riwayat");
 
     if (session) {
-      if (session.role === "SUPER_ADMIN") renderMasjidSwitcher(true);
+      if (session.role === "SUPER_ADMIN") renderMasjidSwitcher(loadHistory);
       loadHistory();
 
       document.getElementById("btnExportHistory").addEventListener("click", function () {
@@ -54,30 +55,6 @@
       document.getElementById("btnExportAll").addEventListener("click", function () {
         downloadCsv("excel", "semua-kupon.csv");
       });
-    }
-
-    async function renderMasjidSwitcher(prependToActions) {
-      const wrap = document.getElementById("masjidSwitcherWrap");
-      const select = document.createElement("select");
-      select.className = "masjid-switcher";
-      select.id = "masjidSelect";
-      select.innerHTML = '<option value="">Semua Masjid</option>';
-      wrap.insertBefore(select, wrap.firstChild);
-
-      try {
-        const list = await Api.call("masjid_list", {});
-        (list || []).forEach(function (m) {
-          const opt = document.createElement("option");
-          opt.value = m.id_masjid;
-          opt.textContent = m.nama_masjid;
-          select.appendChild(opt);
-        });
-        select.value = Auth.getTargetMasjid();
-        select.addEventListener("change", function () {
-          Auth.setTargetMasjid(select.value);
-          loadHistory();
-        });
-      } catch (err) { showToast(err.message, true); }
     }
 
     async function loadHistory() {

@@ -29,26 +29,43 @@
   /* Ukuran tiket dikunci dalam mm supaya hasil cetak presisi & bisa dihitung
      berapa muat per lembar, bukan auto-flow ngikut konten. */
   .ticket-card{
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: center;
-    gap: 3mm;
+    display: flex;
+    flex-direction: column;
     width: 90mm;
-    height: 38mm;
+    height: 46mm;
     border: 1.5px dashed var(--gold);
     border-radius: var(--radius-m);
-    padding: 3.5mm 4mm;
+    padding: 3mm 4mm;
     background: var(--card);
     break-inside: avoid;
     box-sizing: border-box;
     overflow: hidden;
   }
-  .ticket-card .tc-masjid{ font-size: 7.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); }
-  .ticket-card .tc-title{ font-family: var(--font-display); font-size: 12.5px; color: var(--green-deep); margin: 1px 0 4px; }
+  .tc-top{ display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3mm; flex: 1; min-height: 0; }
+  .tc-head{ display: flex; align-items: center; gap: 1.5mm; margin-bottom: 1.3mm; }
+  .tc-logo{
+    width: 6.5mm; height: 6.5mm; border-radius: 50%;
+    border: 0.3px solid var(--line); background: var(--paper-alt);
+    flex-shrink: 0; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 7px; color: var(--gold);
+  }
+  .tc-logo img{ width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tc-masjidname{
+    font-family: var(--font-display); font-weight: 600; font-size: 8.5px;
+    color: var(--green-deep); line-height: 1.15;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44mm;
+  }
+  .ticket-card .tc-eyebrow{ font-size: 6.6px; text-transform: uppercase; letter-spacing: .09em; color: var(--gold); margin-bottom: 1.5mm; }
   .ticket-card .tc-nomor{ font-family: var(--font-mono); font-weight: 700; font-size: 12px; color: var(--ink); }
-  .ticket-card .tc-paket{ font-size: 9.5px; color: var(--ink-soft); margin-top: 2px; }
-  .ticket-card .tc-qr{ width: 24mm; height: 24mm; }
+  .ticket-card .tc-paket{ font-size: 9px; color: var(--ink-soft); margin-top: 1mm; }
+  .ticket-card .tc-qr{ width: 21mm; height: 21mm; }
   .ticket-card .tc-qr img{ width: 100%; height: 100%; display:block; }
+  .ticket-card .tc-terms{
+    margin-top: 1.5mm; padding-top: 1.3mm;
+    border-top: 0.4px dotted var(--line);
+    font-size: 6.1px; line-height: 1.4; color: var(--ink-faint);
+  }
 
   #printArea{ display: none; }
 
@@ -129,8 +146,13 @@
     const session = renderShell("kupon");
     let allCoupons = [];
 
-    // Ukuran tiket dikunci di CSS (90mm x 38mm) + jarak antar tiket 3mm.
-    const TICKET_W = 90, TICKET_H = 38, GAP = 3, MARGIN = 10;
+    // Ukuran tiket dikunci di CSS (90mm x 46mm) + jarak antar tiket 3mm.
+    const TICKET_W = 90, TICKET_H = 46, GAP = 3, MARGIN = 10;
+
+    const TERMS_TEXT =
+      "Kupon berlaku 1x penukaran & wajib dibawa/ditunjukkan saat pengambilan. " +
+      "Tidak dapat diuangkan atau dipindahtangankan ke pihak lain. " +
+      "Kupon hilang atau rusak menjadi tanggung jawab pemegang, bukan panitia.";
 
     const PAPER_SIZES = {
       A4:     { w: 210, h: 297, label: "A4" },
@@ -162,7 +184,7 @@
     }
 
     if (session) {
-      if (session.role === "SUPER_ADMIN") renderMasjidSwitcher();
+      if (session.role === "SUPER_ADMIN") renderMasjidSwitcher(loadCoupons);
       loadCoupons();
 
       document.getElementById("filterStatus").addEventListener("change", renderPickList);
@@ -173,24 +195,20 @@
       updateEstimate();
     }
 
-    async function renderMasjidSwitcher() {
-      const wrap = document.getElementById("masjidSwitcherWrap");
-      wrap.innerHTML = '<select class="masjid-switcher" id="masjidSelect"><option value="">Pilih masjid</option></select>';
-      try {
-        const list = await Api.call("masjid_list", {});
-        const select = document.getElementById("masjidSelect");
-        (list || []).forEach(function (m) {
-          const opt = document.createElement("option");
-          opt.value = m.id_masjid;
-          opt.textContent = m.nama_masjid;
-          select.appendChild(opt);
-        });
-        select.value = Auth.getTargetMasjid();
-        select.addEventListener("change", function () {
-          Auth.setTargetMasjid(select.value);
-          loadCoupons();
-        });
-      } catch (err) { showToast(err.message, true); }
+    // Tentukan nama & logo masjid yang dipakai di kop tiket.
+    // Non-super-admin selalu pakai masjidnya sendiri (dari sesi login).
+    // Super Admin wajib pilih 1 masjid dulu, karena daftar kupon dari
+    // endpoint "list" tidak membawa info masjid per baris.
+    function getMasjidInfoForPrint() {
+      if (session.role !== "SUPER_ADMIN") {
+        return { nama: session.nama_masjid || "", logo: session.logo_masjid || "" };
+      }
+
+      const targetId = Auth.getTargetMasjid();
+      if (!targetId) return null;
+
+      const found = getMasjidById(targetId);
+      return found ? { nama: found.nama_masjid, logo: found.logo_url } : null;
     }
 
     async function loadCoupons() {
@@ -277,9 +295,21 @@
         return;
       }
 
+      const masjidInfo = getMasjidInfoForPrint();
+
+      if (session.role === "SUPER_ADMIN" && !masjidInfo) {
+        showToast("Pilih masjid dulu di kanan atas sebelum mencetak.", true);
+        return;
+      }
+
       applyPageSize();
 
-      const namaMasjid = session.nama_masjid || "Kupon Qurban";
+      const namaMasjid = (masjidInfo && masjidInfo.nama) || "Kupon Qurban";
+      const logoUrl = masjidInfo && masjidInfo.logo;
+      const logoHtml = logoUrl
+        ? '<img src="' + logoUrl + '" alt="">'
+        : "\u262A"; // fallback simbol bulan-bintang kalau belum ada logo
+
       const printArea = document.getElementById("printArea");
       printArea.innerHTML = "";
 
@@ -291,18 +321,24 @@
         const card = document.createElement("div");
         card.className = "ticket-card";
         card.innerHTML =
-          '<div>' +
-            '<div class="tc-masjid">' + namaMasjid + '</div>' +
-            '<div class="tc-title">Kupon Qurban</div>' +
-            '<div class="tc-nomor">' + nomor + '</div>' +
-            '<div class="tc-paket">' + (paket || "-") + '</div>' +
+          '<div class="tc-top">' +
+            '<div>' +
+              '<div class="tc-head">' +
+                '<div class="tc-logo">' + logoHtml + '</div>' +
+                '<div class="tc-masjidname">' + namaMasjid + '</div>' +
+              '</div>' +
+              '<div class="tc-eyebrow">Kupon Qurban</div>' +
+              '<div class="tc-nomor">' + nomor + '</div>' +
+              '<div class="tc-paket">' + (paket || "-") + '</div>' +
+            '</div>' +
+            '<div class="tc-qr"><img alt="QR ' + nomor + '"></div>' +
           '</div>' +
-          '<div class="tc-qr"><img alt="QR ' + nomor + '"></div>';
+          '<div class="tc-terms">' + TERMS_TEXT + '</div>';
 
         printArea.appendChild(card);
 
         const dataUrl = await QRCode.toDataURL(token, { margin: 1, width: 160 });
-        card.querySelector("img").src = dataUrl;
+        card.querySelector(".tc-qr img").src = dataUrl;
       }
 
       window.print();

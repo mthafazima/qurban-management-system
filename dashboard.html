@@ -64,33 +64,10 @@
     if (session) {
 
       if (session.role === "SUPER_ADMIN") {
-        renderMasjidSwitcher();
+        renderMasjidSwitcher(loadDashboard);
       }
 
       loadDashboard();
-    }
-
-    async function renderMasjidSwitcher() {
-      const wrap = document.getElementById("masjidSwitcherWrap");
-      wrap.innerHTML = '<select class="masjid-switcher" id="masjidSelect"><option value="">Semua Masjid</option></select>';
-
-      try {
-        const list = await Api.call("masjid_list", {});
-        const select = document.getElementById("masjidSelect");
-        (list || []).forEach(function (m) {
-          const opt = document.createElement("option");
-          opt.value = m.id_masjid;
-          opt.textContent = m.nama_masjid;
-          select.appendChild(opt);
-        });
-        select.value = Auth.getTargetMasjid();
-        select.addEventListener("change", function () {
-          Auth.setTargetMasjid(select.value);
-          loadDashboard();
-        });
-      } catch (err) {
-        showToast(err.message, true);
-      }
     }
 
     async function loadDashboard() {

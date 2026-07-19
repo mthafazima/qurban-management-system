@@ -59,6 +59,8 @@
       <div class="ticket-list" id="ticketList">
         <p class="hint">Memuat...</p>
       </div>
+
+      <div id="paginationWrap"></div>
     </main>
   </div>
 
@@ -71,7 +73,7 @@
     let allCoupons = [];
 
     if (session) {
-      if (session.role === "SUPER_ADMIN") renderMasjidSwitcher();
+      if (session.role === "SUPER_ADMIN") renderMasjidSwitcher(loadCoupons);
 
       loadCoupons();
       document.getElementById("btnAddSingle").addEventListener("click", addSingle);
@@ -79,26 +81,6 @@
       document.getElementById("searchInput").addEventListener("input", function () {
         renderList(filterCoupons(this.value));
       });
-    }
-
-    async function renderMasjidSwitcher() {
-      const wrap = document.getElementById("masjidSwitcherWrap");
-      wrap.innerHTML = '<select class="masjid-switcher" id="masjidSelect"><option value="">Semua Masjid</option></select>';
-      try {
-        const list = await Api.call("masjid_list", {});
-        const select = document.getElementById("masjidSelect");
-        (list || []).forEach(function (m) {
-          const opt = document.createElement("option");
-          opt.value = m.id_masjid;
-          opt.textContent = m.nama_masjid;
-          select.appendChild(opt);
-        });
-        select.value = Auth.getTargetMasjid();
-        select.addEventListener("change", function () {
-          Auth.setTargetMasjid(select.value);
-          loadCoupons();
-        });
-      } catch (err) { showToast(err.message, true); }
     }
 
     async function loadCoupons() {
@@ -123,20 +105,34 @@
       });
     }
 
-    function renderList(data) {
-      const listEl = document.getElementById("ticketList");
+    const PAGE_SIZE = 20;
+    let currentPage = 1;
+    let currentFiltered = [];
 
-      if (!data || data.length === 0) {
+    function renderList(data) {
+      // urutkan: nomor terbesar (paling baru dibuat) tampil di atas
+      currentFiltered = (data || []).slice().sort(function (a, b) {
+        return a.nomor_kupon < b.nomor_kupon ? 1 : -1;
+      });
+      currentPage = 1;
+      renderPage();
+    }
+
+    function renderPage() {
+      const listEl = document.getElementById("ticketList");
+      const totalPages = Math.max(1, Math.ceil(currentFiltered.length / PAGE_SIZE));
+      if (currentPage > totalPages) currentPage = totalPages;
+
+      if (currentFiltered.length === 0) {
         listEl.innerHTML = '<div class="empty-state"><h3>Belum ada kupon</h3><p>Tambahkan kupon satuan atau generate massal di atas.</p></div>';
+        document.getElementById("paginationWrap").innerHTML = "";
         return;
       }
 
-      // urutkan: yang terbaru (belum ditukar dulu) tampil di atas berdasar nomor
-      const sorted = data.slice().sort(function (a, b) {
-        return a.nomor_kupon < b.nomor_kupon ? 1 : -1;
-      });
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const pageItems = currentFiltered.slice(start, start + PAGE_SIZE);
 
-      listEl.innerHTML = sorted.map(function (c, idx) {
+      listEl.innerHTML = pageItems.map(function (c) {
         const urut = c.nomor_kupon.split("-").pop();
         return '<div class="ticket">' +
           '<div class="ticket-stub"><div class="stub-no">#' + urut + '</div><div class="stub-label">Urut</div><div class="ticket-perf"></div></div>' +
@@ -154,6 +150,58 @@
       listEl.querySelectorAll("button[data-nomor]").forEach(function (btn) {
         btn.addEventListener("click", function () { deleteCoupon(btn.getAttribute("data-nomor")); });
       });
+
+      renderPagination(totalPages, start, pageItems.length);
+    }
+
+    function renderPagination(totalPages, start, shownCount) {
+      const wrap = document.getElementById("paginationWrap");
+
+      const info = '<div class="pagination-info">Menampilkan ' + (start + 1) + '&ndash;' + (start + shownCount) +
+        ' dari ' + currentFiltered.length + ' kupon</div>';
+
+      if (totalPages <= 1) {
+        wrap.innerHTML = info;
+        return;
+      }
+
+      const pages = getPageTokens(currentPage, totalPages);
+
+      const buttons = pages.map(function (p) {
+        if (p === "...") return '<span class="page-ellipsis">&hellip;</span>';
+        const cls = p === currentPage ? "active" : "";
+        return '<button class="' + cls + '" data-page="' + p + '">' + p + '</button>';
+      }).join("");
+
+      wrap.innerHTML = info +
+        '<div class="pagination">' +
+          '<button data-page="' + (currentPage - 1) + '" ' + (currentPage === 1 ? "disabled" : "") + '>&lsaquo;</button>' +
+          buttons +
+          '<button data-page="' + (currentPage + 1) + '" ' + (currentPage === totalPages ? "disabled" : "") + '>&rsaquo;</button>' +
+        '</div>';
+
+      wrap.querySelectorAll("button[data-page]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          currentPage = parseInt(btn.getAttribute("data-page"), 10);
+          renderPage();
+          document.querySelector(".section-title").scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
+    }
+
+    // Bikin daftar token halaman dengan "..." kalau halamannya banyak,
+    // supaya gak nunjukin 50 tombol nomor sekaligus.
+    function getPageTokens(current, total) {
+      const delta = 1;
+      const range = [];
+      for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
+        range.push(i);
+      }
+      if (current - delta > 2) range.unshift("...");
+      if (current + delta < total - 1) range.push("...");
+      range.unshift(1);
+      if (total > 1) range.push(total);
+      return range;
     }
 
     async function addSingle() {

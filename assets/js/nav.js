@@ -130,3 +130,69 @@ function statusBadge(status) {
   }
   return '<span class="badge badge-gold">Belum Ditukar</span>';
 }
+
+/**
+ * Switcher masjid terpusat (dipakai di semua halaman lewat elemen
+ * #masjidSwitcherWrap) supaya logikanya cuma di satu tempat. Otomatis
+ * hanya jalan untuk Super Admin, dan setiap kali ganti pilihan, sidebar
+ * (nama + logo) ikut ter-update juga.
+ *
+ * @param {Function} [onChange] dipanggil setelah target masjid berubah,
+ *   biasanya buat reload data di halaman (mis. loadDashboard, loadCoupons).
+ */
+let _masjidListCache = [];
+
+async function renderMasjidSwitcher(onChange) {
+  const wrap = document.getElementById("masjidSwitcherWrap");
+  if (!wrap) return;
+
+  wrap.innerHTML = '<select class="masjid-switcher" id="masjidSelect"><option value="">Semua Masjid</option></select>';
+
+  try {
+    const list = await Api.call("masjid_list", {});
+    _masjidListCache = list || [];
+
+    const select = document.getElementById("masjidSelect");
+    _masjidListCache.forEach(function (m) {
+      const opt = document.createElement("option");
+      opt.value = m.id_masjid;
+      opt.textContent = m.nama_masjid;
+      select.appendChild(opt);
+    });
+
+    const current = Auth.getTargetMasjid();
+    select.value = current;
+    updateBrandFromTarget(current);
+
+    select.addEventListener("change", function () {
+      Auth.setTargetMasjid(select.value);
+      updateBrandFromTarget(select.value);
+      if (onChange) onChange();
+    });
+
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+function getMasjidById(id) {
+  return _masjidListCache.find(function (m) { return m.id_masjid === id; }) || null;
+}
+
+function updateBrandFromTarget(targetId) {
+  const nameEl = document.querySelector(".brand-text .masjid-name");
+  const markEl = document.querySelector(".brand-mark");
+  if (!nameEl || !markEl) return;
+
+  if (!targetId) {
+    nameEl.textContent = "Semua Masjid";
+    markEl.innerHTML = "\u262A";
+    return;
+  }
+
+  const found = getMasjidById(targetId);
+  if (found) {
+    nameEl.textContent = found.nama_masjid;
+    markEl.innerHTML = found.logo_url ? '<img src="' + found.logo_url + '" alt="">' : "\u262A";
+  }
+}

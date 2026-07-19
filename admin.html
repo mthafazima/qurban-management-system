@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kelola Admin — Kupon Qurban</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+  <div class="app-shell" id="shell">
+    <main class="main">
+      <div class="topbar-bar">
+        <button class="hamburger" id="hamburgerBtn">&#9776;</button>
+      </div>
+      <div class="topbar">
+        <div>
+          <h1>Kelola Admin</h1>
+          <div class="subtitle">Akun yang bisa mengelola dan memindai kupon</div>
+        </div>
+        <div class="topbar-actions" id="masjidSwitcherWrap"></div>
+      </div>
+
+      <div class="card form-card">
+        <h3 style="font-size:15px;margin-bottom:12px">Tambah Admin</h3>
+        <div class="field">
+          <label for="nama">Nama</label>
+          <input type="text" id="nama" placeholder="Nama lengkap">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="usernameBaru">Username</label>
+            <input type="text" id="usernameBaru" placeholder="username">
+          </div>
+          <div class="field">
+            <label for="passwordBaru">Kata sandi</label>
+            <input type="password" id="passwordBaru" placeholder="min. 6 karakter">
+          </div>
+        </div>
+        <div class="field">
+          <label for="roleBaru">Peran</label>
+          <select id="roleBaru">
+            <option value="ADMIN_SCAN">Petugas Scan</option>
+            <option value="ADMIN_MASJID">Admin Masjid</option>
+            <option value="SUPER_ADMIN" id="optSuperAdmin" class="role-hidden">Super Admin</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-block" id="btnAddAdmin">Tambah Admin</button>
+      </div>
+
+      <div class="section-title">Daftar Admin</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Nama</th><th>Username</th><th>Peran</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="adminBody">
+            <tr><td colspan="5">Memuat...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/nav.js"></script>
+  <script>
+    const session = Auth.requireRole(["SUPER_ADMIN", "ADMIN_MASJID"]);
+    if (session) renderShell("admin");
+
+    if (session) {
+      if (session.role === "SUPER_ADMIN") {
+        document.getElementById("optSuperAdmin").classList.remove("role-hidden");
+        renderMasjidSwitcher();
+      }
+      loadAdmins();
+      document.getElementById("btnAddAdmin").addEventListener("click", addAdmin);
+    }
+
+    async function renderMasjidSwitcher() {
+      const wrap = document.getElementById("masjidSwitcherWrap");
+      wrap.innerHTML = '<select class="masjid-switcher" id="masjidSelect"><option value="">Semua Masjid</option></select>';
+      try {
+        const list = await Api.call("masjid_list", {});
+        const select = document.getElementById("masjidSelect");
+        (list || []).forEach(function (m) {
+          const opt = document.createElement("option");
+          opt.value = m.id_masjid;
+          opt.textContent = m.nama_masjid;
+          select.appendChild(opt);
+        });
+        select.value = Auth.getTargetMasjid();
+        select.addEventListener("change", function () {
+          Auth.setTargetMasjid(select.value);
+          loadAdmins();
+        });
+      } catch (err) { showToast(err.message, true); }
+    }
+
+    const ROLE_LABEL = { SUPER_ADMIN: "Super Admin", ADMIN_MASJID: "Admin Masjid", ADMIN_SCAN: "Petugas Scan" };
+
+    async function loadAdmins() {
+      const body = document.getElementById("adminBody");
+      body.innerHTML = '<tr><td colspan="5">Memuat...</td></tr>';
+
+      try {
+        const data = await Api.call("admin_list", {});
+
+        if (data.length === 0) {
+          body.innerHTML = '<tr><td colspan="5">Belum ada admin.</td></tr>';
+          return;
+        }
+
+        body.innerHTML = data.map(function (a) {
+          const badge = a.status === "AKTIF" ? '<span class="badge badge-green">Aktif</span>' : '<span class="badge badge-muted">Nonaktif</span>';
+          const toggleLabel = a.status === "AKTIF" ? "Nonaktifkan" : "Aktifkan";
+          const toggleAction = a.status === "AKTIF" ? "disable" : "enable";
+          const isSelf = a.username === session.username;
+
+          return '<tr>' +
+            '<td>' + a.nama + '</td>' +
+            '<td class="mono">' + a.username + '</td>' +
+            '<td>' + (ROLE_LABEL[a.role] || a.role) + '</td>' +
+            '<td>' + badge + '</td>' +
+            '<td><div class="cell-actions">' +
+              (isSelf ? '' :
+                '<button class="btn btn-outline btn-sm" data-action="reset" data-username="' + a.username + '">Reset Sandi</button>' +
+                '<button class="btn btn-outline btn-sm" data-action="' + toggleAction + '" data-username="' + a.username + '">' + toggleLabel + '</button>' +
+                (a.role === "SUPER_ADMIN" ? '' : '<button class="btn btn-danger btn-sm" data-action="delete" data-username="' + a.username + '">Hapus</button>')
+              ) +
+            '</div></td>' +
+          '</tr>';
+        }).join("");
+
+        body.querySelectorAll("button[data-action]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            handleAction(btn.getAttribute("data-action"), btn.getAttribute("data-username"));
+          });
+        });
+
+      } catch (err) {
+        showToast(err.message, true);
+        body.innerHTML = '<tr><td colspan="5">Gagal memuat data.</td></tr>';
+      }
+    }
+
+    async function handleAction(action, username) {
+      if (action === "delete") {
+        if (!confirm("Hapus admin " + username + "?")) return;
+        try {
+          const res = await Api.call("admin_delete", { target_username: username });
+          if (!res.success) { showToast(res.message, true); return; }
+          showToast("Admin dihapus.");
+          loadAdmins();
+        } catch (err) { showToast(err.message, true); }
+        return;
+      }
+
+      if (action === "reset") {
+        const newPassword = prompt("Kata sandi baru untuk " + username + " (min. 6 karakter):");
+        if (!newPassword) return;
+        try {
+          const res = await Api.call("admin_reset_password", { target_username: username, new_password: newPassword });
+          if (!res.success) { showToast(res.message, true); return; }
+          showToast("Kata sandi berhasil direset.");
+        } catch (err) { showToast(err.message, true); }
+        return;
+      }
+
+      // disable / enable
+      try {
+        const res = await Api.call("admin_" + action, { target_username: username });
+        if (!res.success) { showToast(res.message, true); return; }
+        showToast("Status admin diperbarui.");
+        loadAdmins();
+      } catch (err) { showToast(err.message, true); }
+    }
+
+    async function addAdmin() {
+      const nama = document.getElementById("nama").value.trim();
+      const usernameBaru = document.getElementById("usernameBaru").value.trim();
+      const password = document.getElementById("passwordBaru").value;
+      const role = document.getElementById("roleBaru").value;
+
+      if (!nama || !usernameBaru || !password) {
+        showToast("Lengkapi semua kolom dulu.", true);
+        return;
+      }
+      if (password.length < 6) {
+        showToast("Kata sandi minimal 6 karakter.", true);
+        return;
+      }
+
+      try {
+        const res = await Api.call("admin_add", { nama, username_baru: usernameBaru, password, role });
+        if (!res.success) { showToast(res.message, true); return; }
+        showToast("Admin " + nama + " berhasil ditambahkan.");
+        document.getElementById("nama").value = "";
+        document.getElementById("usernameBaru").value = "";
+        document.getElementById("passwordBaru").value = "";
+        loadAdmins();
+      } catch (err) { showToast(err.message, true); }
+    }
+  </script>
+</body>
+</html>

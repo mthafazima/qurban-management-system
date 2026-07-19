@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riwayat — Kupon Qurban</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+  <div class="app-shell" id="shell">
+    <main class="main">
+      <div class="topbar-bar">
+        <button class="hamburger" id="hamburgerBtn">&#9776;</button>
+      </div>
+      <div class="topbar">
+        <div>
+          <h1>Riwayat Penukaran</h1>
+          <div class="subtitle" id="totalSubtitle">Memuat data...</div>
+        </div>
+        <div class="topbar-actions" id="masjidSwitcherWrap">
+          <button class="btn btn-outline btn-sm" id="btnExportHistory">Export Riwayat (CSV)</button>
+          <button class="btn btn-outline btn-sm" id="btnExportAll">Export Semua Kupon (CSV)</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Nomor Kupon</th><th>Waktu Ditukar</th><th>Petugas</th></tr>
+          </thead>
+          <tbody id="historyBody">
+            <tr><td colspan="3">Memuat...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/nav.js"></script>
+  <script>
+    const session = renderShell("riwayat");
+
+    if (session) {
+      if (session.role === "SUPER_ADMIN") renderMasjidSwitcher(true);
+      loadHistory();
+
+      document.getElementById("btnExportHistory").addEventListener("click", function () {
+        downloadCsv("history_excel", "riwayat-penukaran.csv");
+      });
+      document.getElementById("btnExportAll").addEventListener("click", function () {
+        downloadCsv("excel", "semua-kupon.csv");
+      });
+    }
+
+    async function renderMasjidSwitcher(prependToActions) {
+      const wrap = document.getElementById("masjidSwitcherWrap");
+      const select = document.createElement("select");
+      select.className = "masjid-switcher";
+      select.id = "masjidSelect";
+      select.innerHTML = '<option value="">Semua Masjid</option>';
+      wrap.insertBefore(select, wrap.firstChild);
+
+      try {
+        const list = await Api.call("masjid_list", {});
+        (list || []).forEach(function (m) {
+          const opt = document.createElement("option");
+          opt.value = m.id_masjid;
+          opt.textContent = m.nama_masjid;
+          select.appendChild(opt);
+        });
+        select.value = Auth.getTargetMasjid();
+        select.addEventListener("change", function () {
+          Auth.setTargetMasjid(select.value);
+          loadHistory();
+        });
+      } catch (err) { showToast(err.message, true); }
+    }
+
+    async function loadHistory() {
+      const body = document.getElementById("historyBody");
+      body.innerHTML = '<tr><td colspan="3">Memuat...</td></tr>';
+
+      try {
+        const data = await Api.call("history", {});
+        document.getElementById("totalSubtitle").textContent = data.length + " kupon sudah ditukar";
+
+        if (data.length === 0) {
+          body.innerHTML = '<tr><td colspan="3">Belum ada penukaran.</td></tr>';
+          return;
+        }
+
+        const sorted = data.slice().sort(function (a, b) {
+          return new Date(b.tanggal) - new Date(a.tanggal);
+        });
+
+        body.innerHTML = sorted.map(function (row) {
+          return '<tr>' +
+            '<td class="mono">' + row.nomor_kupon + '</td>' +
+            '<td>' + fmtTanggal(row.tanggal) + '</td>' +
+            '<td>' + (row.petugas || "-") + '</td>' +
+          '</tr>';
+        }).join("");
+
+      } catch (err) {
+        showToast(err.message, true);
+        body.innerHTML = '<tr><td colspan="3">Gagal memuat data.</td></tr>';
+      }
+    }
+
+    async function downloadCsv(action, filename) {
+      try {
+        const csv = await Api.callCsv(action, {});
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+  </script>
+</body>
+</html>

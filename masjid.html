@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kelola Masjid — Kupon Qurban</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+  <div class="app-shell" id="shell">
+    <main class="main">
+      <div class="topbar-bar">
+        <button class="hamburger" id="hamburgerBtn">&#9776;</button>
+      </div>
+      <div class="topbar">
+        <div>
+          <h1>Kelola Masjid</h1>
+          <div class="subtitle">Daftar masjid yang terdaftar di sistem</div>
+        </div>
+      </div>
+
+      <div class="card form-card" id="formCard">
+        <h3 style="font-size:15px;margin-bottom:12px" id="formTitle">Tambah Masjid</h3>
+        <input type="hidden" id="editId">
+        <div class="field">
+          <label for="namaMasjid">Nama masjid</label>
+          <input type="text" id="namaMasjid" placeholder="Masjid Al-Ikhlas">
+        </div>
+        <div class="field">
+          <label for="alamatMasjid">Alamat</label>
+          <input type="text" id="alamatMasjid" placeholder="Jl. Contoh No. 1">
+        </div>
+        <div class="field">
+          <label for="logoMasjid">URL logo</label>
+          <input type="text" id="logoMasjid" placeholder="https://...">
+        </div>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn-primary" id="btnSaveMasjid" style="flex:1">Simpan</button>
+          <button class="btn btn-outline role-hidden" id="btnCancelEdit">Batal</button>
+        </div>
+      </div>
+
+      <div class="section-title">Daftar Masjid</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Nama Masjid</th><th>Alamat</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="masjidBody">
+            <tr><td colspan="4">Memuat...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/nav.js"></script>
+  <script>
+    const session = Auth.requireRole(["SUPER_ADMIN"]);
+    if (session) renderShell("masjid");
+
+    if (session) {
+      loadMasjid();
+      document.getElementById("btnSaveMasjid").addEventListener("click", saveMasjid);
+      document.getElementById("btnCancelEdit").addEventListener("click", resetForm);
+    }
+
+    async function loadMasjid() {
+      const body = document.getElementById("masjidBody");
+      body.innerHTML = '<tr><td colspan="4">Memuat...</td></tr>';
+
+      try {
+        const data = await Api.call("masjid_list", {});
+
+        if (data.length === 0) {
+          body.innerHTML = '<tr><td colspan="4">Belum ada masjid terdaftar.</td></tr>';
+          return;
+        }
+
+        body.innerHTML = data.map(function (m) {
+          const badge = m.status === "AKTIF" ? '<span class="badge badge-green">Aktif</span>' : '<span class="badge badge-muted">Nonaktif</span>';
+          const toggleLabel = m.status === "AKTIF" ? "Nonaktifkan" : "Aktifkan";
+          const toggleStatus = m.status === "AKTIF" ? "NONAKTIF" : "AKTIF";
+
+          return '<tr>' +
+            '<td>' + m.nama_masjid + '</td>' +
+            '<td>' + (m.alamat || "-") + '</td>' +
+            '<td>' + badge + '</td>' +
+            '<td><div class="cell-actions">' +
+              '<button class="btn btn-outline btn-sm" data-action="edit" data-id="' + m.id_masjid + '" data-nama="' + escapeAttr(m.nama_masjid) + '" data-alamat="' + escapeAttr(m.alamat || "") + '" data-logo="' + escapeAttr(m.logo_url || "") + '">Edit</button>' +
+              '<button class="btn btn-outline btn-sm" data-action="toggle" data-id="' + m.id_masjid + '" data-status="' + toggleStatus + '">' + toggleLabel + '</button>' +
+            '</div></td>' +
+          '</tr>';
+        }).join("");
+
+        body.querySelectorAll("button[data-action]").forEach(function (btn) {
+          btn.addEventListener("click", function () { handleAction(btn); });
+        });
+
+      } catch (err) {
+        showToast(err.message, true);
+        body.innerHTML = '<tr><td colspan="4">Gagal memuat data.</td></tr>';
+      }
+    }
+
+    function escapeAttr(str) {
+      return String(str).replace(/"/g, "&quot;");
+    }
+
+    function handleAction(btn) {
+      const action = btn.getAttribute("data-action");
+      const id = btn.getAttribute("data-id");
+
+      if (action === "edit") {
+        document.getElementById("editId").value = id;
+        document.getElementById("namaMasjid").value = btn.getAttribute("data-nama");
+        document.getElementById("alamatMasjid").value = btn.getAttribute("data-alamat");
+        document.getElementById("logoMasjid").value = btn.getAttribute("data-logo");
+        document.getElementById("formTitle").textContent = "Edit Masjid";
+        document.getElementById("btnCancelEdit").classList.remove("role-hidden");
+        document.getElementById("formCard").scrollIntoView({ behavior: "smooth" });
+        return;
+      }
+
+      toggleStatus(id, btn.getAttribute("data-status"));
+    }
+
+    async function toggleStatus(id, status) {
+      try {
+        const res = await Api.call("masjid_toggle", { id_masjid: id, status });
+        if (!res.success) { showToast(res.message, true); return; }
+        showToast("Status masjid diperbarui.");
+        loadMasjid();
+      } catch (err) { showToast(err.message, true); }
+    }
+
+    function resetForm() {
+      document.getElementById("editId").value = "";
+      document.getElementById("namaMasjid").value = "";
+      document.getElementById("alamatMasjid").value = "";
+      document.getElementById("logoMasjid").value = "";
+      document.getElementById("formTitle").textContent = "Tambah Masjid";
+      document.getElementById("btnCancelEdit").classList.add("role-hidden");
+    }
+
+    async function saveMasjid() {
+      const id = document.getElementById("editId").value;
+      const nama_masjid = document.getElementById("namaMasjid").value.trim();
+      const alamat = document.getElementById("alamatMasjid").value.trim();
+      const logo_url = document.getElementById("logoMasjid").value.trim();
+
+      if (!nama_masjid) { showToast("Nama masjid wajib diisi.", true); return; }
+
+      try {
+        let res;
+        if (id) {
+          res = await Api.call("masjid_update", { id_masjid: id, nama_masjid, alamat, logo_url });
+        } else {
+          res = await Api.call("masjid_add", { nama_masjid, alamat, logo_url });
+        }
+
+        if (!res.success) { showToast(res.message, true); return; }
+        showToast(id ? "Masjid diperbarui." : "Masjid ditambahkan.");
+        resetForm();
+        loadMasjid();
+      } catch (err) { showToast(err.message, true); }
+    }
+  </script>
+</body>
+</html>

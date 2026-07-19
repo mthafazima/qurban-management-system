@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cetak Kupon — Kupon Qurban</title>
+<link rel="stylesheet" href="assets/css/style.css">
+<style>
+  /* ---------- Kartu tiket untuk print ---------- */
+  .print-toolbar{
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 18px;
+  }
+  .print-filters{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .print-filters select, .print-filters input{ width: auto; min-width: 160px; }
+  .select-all-row{
+    display:flex; align-items:center; gap:8px;
+    font-size: 12.5px; color: var(--ink-soft); margin-bottom: 10px;
+  }
+  .pick-list{ display:flex; flex-direction:column; gap:6px; margin-bottom: 26px; }
+  .pick-row{
+    display:flex; align-items:center; gap:12px;
+    background: var(--card); border:1px solid var(--line); border-radius: var(--radius-s);
+    padding: 8px 14px; font-size: 13px;
+  }
+  .pick-row .pk-nomor{ font-family: var(--font-mono); font-weight:600; width: 190px; }
+  .pick-row .pk-paket{ color: var(--ink-soft); flex:1; }
+
+  /* Ukuran tiket dikunci dalam mm supaya hasil cetak presisi & bisa dihitung
+     berapa muat per lembar, bukan auto-flow ngikut konten. */
+  .ticket-card{
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 3mm;
+    width: 90mm;
+    height: 38mm;
+    border: 1.5px dashed var(--gold);
+    border-radius: var(--radius-m);
+    padding: 3.5mm 4mm;
+    background: var(--card);
+    break-inside: avoid;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .ticket-card .tc-masjid{ font-size: 7.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); }
+  .ticket-card .tc-title{ font-family: var(--font-display); font-size: 12.5px; color: var(--green-deep); margin: 1px 0 4px; }
+  .ticket-card .tc-nomor{ font-family: var(--font-mono); font-weight: 700; font-size: 12px; color: var(--ink); }
+  .ticket-card .tc-paket{ font-size: 9.5px; color: var(--ink-soft); margin-top: 2px; }
+  .ticket-card .tc-qr{ width: 24mm; height: 24mm; }
+  .ticket-card .tc-qr img{ width: 100%; height: 100%; display:block; }
+
+  #printArea{ display: none; }
+
+  #paperEstimate{
+    font-size: 12.5px; color: var(--ink-soft); background: var(--paper-alt);
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+    padding: 8px 12px; margin-bottom: 16px;
+  }
+  #paperEstimate b{ color: var(--green-deep); }
+
+  @media print{
+    .no-print{ display: none !important; }
+    .app-shell{ display: block; }
+    .main{ padding: 0; max-width: none; }
+    body{ background: #fff; }
+    #printArea{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3mm;
+    }
+  }
+</style>
+</head>
+<body>
+
+  <div class="app-shell" id="shell">
+    <main class="main">
+      <div class="topbar-bar no-print">
+        <button class="hamburger" id="hamburgerBtn">&#9776;</button>
+      </div>
+      <div class="topbar no-print">
+        <div>
+          <h1>Cetak Kupon</h1>
+          <div class="subtitle">Pilih kupon yang mau dicetak, lalu klik Cetak</div>
+        </div>
+        <div class="topbar-actions" id="masjidSwitcherWrap"></div>
+      </div>
+
+      <div class="print-toolbar no-print">
+        <div class="print-filters">
+          <select id="filterStatus">
+            <option value="BELUM_DITUKAR">Belum Ditukar</option>
+            <option value="SEMUA">Semua Status</option>
+            <option value="SUDAH_DITUKAR">Sudah Ditukar</option>
+          </select>
+          <input type="text" id="searchInput" placeholder="Cari nomor kupon...">
+          <select id="paperSize">
+            <option value="A4">A4 (210 &times; 297mm)</option>
+            <option value="A3">A3 (297 &times; 420mm)</option>
+            <option value="A3P" selected>A3+ (329 &times; 483mm)</option>
+            <option value="A3P_L">A3+ Landscape (483 &times; 329mm)</option>
+          </select>
+        </div>
+        <button class="btn btn-gold" id="btnPrint">Cetak (<span id="countSelected">0</span> kupon)</button>
+      </div>
+
+      <div id="paperEstimate" class="no-print"></div>
+
+      <div class="select-all-row no-print">
+        <input type="checkbox" id="checkAll">
+        <label for="checkAll" style="margin:0">Pilih semua yang tampil</label>
+      </div>
+
+      <div class="pick-list no-print" id="pickList">
+        <p class="hint">Memuat...</p>
+      </div>
+
+      <div id="printArea"></div>
+    </main>
+  </div>
+
+  <script src="assets/js/qrcode.min.js"></script>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/nav.js"></script>
+  <script>
+    const session = renderShell("kupon");
+    let allCoupons = [];
+
+    // Ukuran tiket dikunci di CSS (90mm x 38mm) + jarak antar tiket 3mm.
+    const TICKET_W = 90, TICKET_H = 38, GAP = 3, MARGIN = 10;
+
+    const PAPER_SIZES = {
+      A4:     { w: 210, h: 297, label: "A4" },
+      A3:     { w: 297, h: 420, label: "A3" },
+      A3P:    { w: 329, h: 483, label: "A3+" },
+      A3P_L:  { w: 483, h: 329, label: "A3+ Landscape" }
+    };
+
+    function calcLayout(paperKey) {
+      const p = PAPER_SIZES[paperKey];
+      const usableW = p.w - 2 * MARGIN;
+      const usableH = p.h - 2 * MARGIN;
+      const cols = Math.max(1, Math.floor((usableW + GAP) / (TICKET_W + GAP)));
+      const rows = Math.max(1, Math.floor((usableH + GAP) / (TICKET_H + GAP)));
+      return { cols, rows, perPage: cols * rows, paper: p };
+    }
+
+    function updateEstimate() {
+      const paperKey = document.getElementById("paperSize").value;
+      const layout = calcLayout(paperKey);
+      const selected = document.querySelectorAll(".pick-check:checked").length;
+      const pages = selected ? Math.ceil(selected / layout.perPage) : 0;
+
+      document.getElementById("paperEstimate").innerHTML =
+        'Ukuran tiket dikunci <b>' + TICKET_W + '&times;' + TICKET_H + 'mm</b>. ' +
+        'Di kertas <b>' + layout.paper.label + '</b> muat <b>' + layout.perPage + ' kupon/lembar</b> ' +
+        '(' + layout.cols + ' kolom &times; ' + layout.rows + ' baris)' +
+        (selected ? ' &mdash; ' + selected + ' kupon dipilih = <b>' + pages + ' lembar</b>.' : '.');
+    }
+
+    if (session) {
+      if (session.role === "SUPER_ADMIN") renderMasjidSwitcher();
+      loadCoupons();
+
+      document.getElementById("filterStatus").addEventListener("change", renderPickList);
+      document.getElementById("searchInput").addEventListener("input", renderPickList);
+      document.getElementById("checkAll").addEventListener("change", toggleAll);
+      document.getElementById("paperSize").addEventListener("change", updateEstimate);
+      document.getElementById("btnPrint").addEventListener("click", doPrint);
+      updateEstimate();
+    }
+
+    async function renderMasjidSwitcher() {
+      const wrap = document.getElementById("masjidSwitcherWrap");
+      wrap.innerHTML = '<select class="masjid-switcher" id="masjidSelect"><option value="">Pilih masjid</option></select>';
+      try {
+        const list = await Api.call("masjid_list", {});
+        const select = document.getElementById("masjidSelect");
+        (list || []).forEach(function (m) {
+          const opt = document.createElement("option");
+          opt.value = m.id_masjid;
+          opt.textContent = m.nama_masjid;
+          select.appendChild(opt);
+        });
+        select.value = Auth.getTargetMasjid();
+        select.addEventListener("change", function () {
+          Auth.setTargetMasjid(select.value);
+          loadCoupons();
+        });
+      } catch (err) { showToast(err.message, true); }
+    }
+
+    async function loadCoupons() {
+      const listEl = document.getElementById("pickList");
+      listEl.innerHTML = '<p class="hint">Memuat...</p>';
+      try {
+        allCoupons = await Api.call("list", {});
+        renderPickList();
+      } catch (err) {
+        showToast(err.message, true);
+        listEl.innerHTML = '<p class="hint">Gagal memuat data.</p>';
+      }
+    }
+
+    function getFiltered() {
+      const status = document.getElementById("filterStatus").value;
+      const q = document.getElementById("searchInput").value.trim().toLowerCase();
+
+      return allCoupons.filter(function (c) {
+        if (status !== "SEMUA" && c.status !== status) return false;
+        if (q && c.nomor_kupon.toLowerCase().indexOf(q) === -1) return false;
+        return true;
+      });
+    }
+
+    function renderPickList() {
+      const listEl = document.getElementById("pickList");
+      const filtered = getFiltered();
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = '<div class="empty-state"><h3>Tidak ada kupon</h3><p>Coba ubah filter atau pencarian.</p></div>';
+        updateCount();
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(function (c) {
+        return '<label class="pick-row">' +
+          '<input type="checkbox" class="pick-check" data-nomor="' + c.nomor_kupon + '" data-token="' + c.token + '" data-paket="' + c.jenis_paket + '" checked>' +
+          '<span class="pk-nomor">' + c.nomor_kupon + '</span>' +
+          '<span class="pk-paket">' + (c.jenis_paket || "-") + '</span>' +
+          statusBadge(c.status) +
+        '</label>';
+      }).join("");
+
+      listEl.querySelectorAll(".pick-check").forEach(function (cb) {
+        cb.addEventListener("change", function () { updateCount(); updateEstimate(); });
+      });
+
+      document.getElementById("checkAll").checked = true;
+      updateCount();
+      updateEstimate();
+    }
+
+    function toggleAll() {
+      const checked = document.getElementById("checkAll").checked;
+      document.querySelectorAll(".pick-check").forEach(function (cb) { cb.checked = checked; });
+      updateCount();
+      updateEstimate();
+    }
+
+    function updateCount() {
+      const n = document.querySelectorAll(".pick-check:checked").length;
+      document.getElementById("countSelected").textContent = n;
+    }
+
+    function applyPageSize() {
+      const paperKey = document.getElementById("paperSize").value;
+      const p = PAPER_SIZES[paperKey].w + "mm " + PAPER_SIZES[paperKey].h + "mm";
+
+      let styleTag = document.getElementById("dynamicPageStyle");
+      if (!styleTag) {
+        styleTag = document.createElement("style");
+        styleTag.id = "dynamicPageStyle";
+        document.head.appendChild(styleTag);
+      }
+      styleTag.textContent = "@page{ size: " + p + "; margin: " + MARGIN + "mm; }";
+    }
+
+    async function doPrint() {
+      const checked = Array.from(document.querySelectorAll(".pick-check:checked"));
+
+      if (checked.length === 0) {
+        showToast("Pilih minimal 1 kupon dulu.", true);
+        return;
+      }
+
+      applyPageSize();
+
+      const namaMasjid = session.nama_masjid || "Kupon Qurban";
+      const printArea = document.getElementById("printArea");
+      printArea.innerHTML = "";
+
+      for (const cb of checked) {
+        const nomor = cb.getAttribute("data-nomor");
+        const token = cb.getAttribute("data-token");
+        const paket = cb.getAttribute("data-paket");
+
+        const card = document.createElement("div");
+        card.className = "ticket-card";
+        card.innerHTML =
+          '<div>' +
+            '<div class="tc-masjid">' + namaMasjid + '</div>' +
+            '<div class="tc-title">Kupon Qurban</div>' +
+            '<div class="tc-nomor">' + nomor + '</div>' +
+            '<div class="tc-paket">' + (paket || "-") + '</div>' +
+          '</div>' +
+          '<div class="tc-qr"><img alt="QR ' + nomor + '"></div>';
+
+        printArea.appendChild(card);
+
+        const dataUrl = await QRCode.toDataURL(token, { margin: 1, width: 160 });
+        card.querySelector("img").src = dataUrl;
+      }
+
+      window.print();
+    }
+  </script>
+</body>
+</html>

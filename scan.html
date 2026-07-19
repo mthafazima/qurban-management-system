@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scan Kupon — Kupon Qurban</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+  <div class="app-shell" id="shell">
+    <main class="main">
+      <div class="topbar-bar">
+        <button class="hamburger" id="hamburgerBtn">&#9776;</button>
+      </div>
+      <div class="topbar">
+        <div>
+          <h1>Scan Kupon</h1>
+          <div class="subtitle">Pindai QR atau masukkan nomor kupon untuk menukarkan</div>
+        </div>
+        <div class="topbar-actions" id="masjidSwitcherWrap"></div>
+      </div>
+
+      <div class="grid grid-2">
+        <div>
+          <div class="scan-modes">
+            <button class="mode-btn active" id="modeQr">Scan QR</button>
+            <button class="mode-btn" id="modeManual">Input Nomor</button>
+          </div>
+
+          <div id="qrPane">
+            <div id="reader"></div>
+            <p class="hint">Arahkan kamera ke QR pada kupon. Izinkan akses kamera saat diminta browser.</p>
+          </div>
+
+          <div id="manualPane" style="display:none">
+            <div class="card form-card">
+              <div class="field">
+                <label for="nomorInput">Nomor urut kupon</label>
+                <input type="number" id="nomorInput" placeholder="Contoh: 24" min="1">
+                <div class="hint">Nomor urut saja (bukan kode lengkap QURB-XXXX-0024).</div>
+              </div>
+              <button class="btn btn-primary btn-block" id="btnCariNomor">Cari Kupon</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div id="resultWrap"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="assets/js/html5-qrcode.min.js"></script>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/nav.js"></script>
+  <script>
+    const session = renderShell("scan");
+    let currentToken = null;
+    let scanner = null;
+    let scanLocked = false;
+
+    if (session) {
+      if (session.role === "SUPER_ADMIN") renderMasjidSwitcher();
+      startScanner();
+
+      document.getElementById("modeQr").addEventListener("click", function () { switchMode("qr"); });
+      document.getElementById("modeManual").addEventListener("click", function () { switchMode("manual"); });
+      document.getElementById("btnCariNomor").addEventListener("click", cariNomor);
+    }
+
+    async function renderMasjidSwitcher() {
+      const wrap = document.getElementById("masjidSwitcherWrap");
+      wrap.innerHTML = '<select class="masjid-switcher" id="masjidSelect"><option value="">Pilih masjid</option></select>';
+      try {
+        const list = await Api.call("masjid_list", {});
+        const select = document.getElementById("masjidSelect");
+        (list || []).forEach(function (m) {
+          const opt = document.createElement("option");
+          opt.value = m.id_masjid;
+          opt.textContent = m.nama_masjid;
+          select.appendChild(opt);
+        });
+        select.value = Auth.getTargetMasjid();
+        select.addEventListener("change", function () { Auth.setTargetMasjid(select.value); });
+      } catch (err) { showToast(err.message, true); }
+    }
+
+    function switchMode(mode) {
+      document.getElementById("modeQr").classList.toggle("active", mode === "qr");
+      document.getElementById("modeManual").classList.toggle("active", mode === "manual");
+      document.getElementById("qrPane").style.display = mode === "qr" ? "block" : "none";
+      document.getElementById("manualPane").style.display = mode === "manual" ? "block" : "none";
+
+      if (mode === "qr") startScanner(); else stopScanner();
+    }
+
+    function startScanner() {
+      if (scanner) return;
+      scanner = new Html5Qrcode("reader");
+      scanLocked = false;
+
+      Html5Qrcode.getCameras().then(function (cams) {
+        if (!cams || cams.length === 0) {
+          document.getElementById("reader").innerHTML = '<p class="hint">Kamera tidak tersedia di perangkat ini. Gunakan mode Input Nomor.</p>';
+          return;
+        }
+        const camId = cams[cams.length - 1].id; // biasanya kamera belakang di HP
+        scanner.start(camId, { fps: 10, qrbox: 240 }, onScanSuccess).catch(function () {
+          document.getElementById("reader").innerHTML = '<p class="hint">Tidak bisa mengakses kamera. Gunakan mode Input Nomor.</p>';
+        });
+      }).catch(function () {
+        document.getElementById("reader").innerHTML = '<p class="hint">Tidak bisa mengakses kamera. Gunakan mode Input Nomor.</p>';
+      });
+    }
+
+    function stopScanner() {
+      if (scanner && scanner.isScanning) {
+        scanner.stop().catch(function () {});
+      }
+    }
+
+    async function onScanSuccess(decodedText) {
+      if (scanLocked) return;
+      scanLocked = true;
+      await validateToken(decodedText);
+      setTimeout(function () { scanLocked = false; }, 1500);
+    }
+
+    async function validateToken(token) {
+      try {
+        const res = await Api.call("validate", { token });
+        renderResult(res, token);
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    async function cariNomor() {
+      const nomor = document.getElementById("nomorInput").value.trim();
+      if (!nomor) { showToast("Masukkan nomor kupon dulu.", true); return; }
+
+      try {
+        const res = await Api.call("nomor", { nomor });
+        if (!res.success) {
+          renderResult(res, null);
+          return;
+        }
+        // dapat token dari lookup nomor, validasi lagi biar konsisten alurnya
+        renderResult({ success: true, nomor_kupon: res.nomor_kupon, jenis_paket: "" }, res.token);
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    const FAIL_MESSAGES = {
+      TOKEN_TIDAK_DITEMUKAN: "QR tidak dikenali / bukan kupon yang valid.",
+      TIDAK_DITEMUKAN: "Nomor kupon tidak ditemukan untuk masjid ini.",
+      SUDAH_DITUKAR: "Kupon ini sudah pernah ditukarkan sebelumnya.",
+      KUPON_BUKAN_MILIK_MASJID_INI: "Kupon ini bukan milik masjid yang sedang dipilih.",
+      MASJID_TIDAK_DIKETAHUI: "Pilih masjid dulu di kanan atas."
+    };
+
+    function renderResult(res, token) {
+      const wrap = document.getElementById("resultWrap");
+      currentToken = token;
+
+      if (!res.success) {
+        wrap.innerHTML =
+          '<div class="scan-result fail">' +
+            '<div class="r-status">Tidak Valid</div>' +
+            '<p>' + (FAIL_MESSAGES[res.message] || res.message) + '</p>' +
+          '</div>';
+        return;
+      }
+
+      wrap.innerHTML =
+        '<div class="scan-result ok">' +
+          '<div class="r-status">Kupon Valid</div>' +
+          '<p class="mono" style="font-size:16px;color:var(--ink);margin-bottom:4px">' + res.nomor_kupon + '</p>' +
+          (res.jenis_paket ? '<p>Paket: ' + res.jenis_paket + '</p>' : '') +
+          '<button class="btn btn-gold" id="btnTukar" style="margin-top:10px">Tukarkan Kupon</button>' +
+        '</div>';
+
+      document.getElementById("btnTukar").addEventListener("click", tukarkan);
+    }
+
+    async function tukarkan() {
+      if (!currentToken) return;
+      const btn = document.getElementById("btnTukar");
+      btn.disabled = true;
+      btn.textContent = "Memproses...";
+
+      try {
+        const res = await Api.call("redeem", { token: currentToken });
+        if (!res.success) {
+          showToast(FAIL_MESSAGES[res.message] || res.message, true);
+          btn.disabled = false;
+          btn.textContent = "Tukarkan Kupon";
+          return;
+        }
+        showToast("Kupon " + res.nomor_kupon + " berhasil ditukarkan.");
+        document.getElementById("resultWrap").innerHTML = "";
+        document.getElementById("nomorInput").value = "";
+        currentToken = null;
+      } catch (err) {
+        showToast(err.message, true);
+        btn.disabled = false;
+        btn.textContent = "Tukarkan Kupon";
+      }
+    }
+  </script>
+</body>
+</html>

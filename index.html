@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Masuk — Kupon Qurban</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+  <div class="login-shell">
+    <form class="login-card" id="loginForm" novalidate>
+      <div class="login-mark">&#9770;</div>
+      <h1>Kupon Qurban</h1>
+      <p class="subtitle">Masuk untuk mengelola kupon masjid Anda</p>
+
+      <div class="login-error" id="loginError"></div>
+
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="password">Kata sandi</label>
+        <input type="password" id="password" autocomplete="current-password" required>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block" id="btnSubmit">Masuk</button>
+    </form>
+  </div>
+
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script>
+    // Kalau sudah ada sesi aktif, langsung lempar ke dashboard.
+    if (Auth.getSession()) {
+      window.location.href = "dashboard.html";
+    }
+
+    const form = document.getElementById("loginForm");
+    const errorBox = document.getElementById("loginError");
+    const btnSubmit = document.getElementById("btnSubmit");
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.classList.add("show");
+    }
+
+    const MESSAGES = {
+      ADMIN_NONAKTIF: "Akun Anda sedang dinonaktifkan. Hubungi Super Admin.",
+      MASJID_NONAKTIF: "Masjid Anda sedang dinonaktifkan.",
+      USERNAME_PASSWORD_SALAH: "Username atau kata sandi salah."
+    };
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      errorBox.classList.remove("show");
+
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+
+      if (!username || !password) {
+        showError("Username dan kata sandi wajib diisi.");
+        return;
+      }
+
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = "Memeriksa...";
+
+      try {
+        const res = await Api.call("login", { username, password });
+
+        if (!res.success) {
+          showError(MESSAGES[res.message] || res.message || "Gagal masuk.");
+          return;
+        }
+
+        Auth.setSession(res);
+        window.location.href = "dashboard.html";
+
+      } catch (err) {
+        showError(err.message || "Tidak bisa menghubungi server.");
+      } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = "Masuk";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Kupon Qurban</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+  <div class="app-shell" id="shell">
+    <main class="main">
+      <div class="topbar-bar">
+        <button class="hamburger" id="hamburgerBtn">&#9776;</button>
+      </div>
+      <div class="topbar">
+        <div>
+          <h1>Dashboard</h1>
+          <div class="subtitle" id="pageSubtitle">Ringkasan kupon qurban</div>
+        </div>
+        <div class="topbar-actions" id="masjidSwitcherWrap"></div>
+      </div>
+
+      <div class="grid grid-4" id="statGrid">
+        <div class="card stat-card">
+          <div class="stat-label">Total Kupon</div>
+          <div class="stat-value">&mdash;</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">Sudah Ditukar</div>
+          <div class="stat-value">&mdash;</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">Belum Ditukar</div>
+          <div class="stat-value">&mdash;</div>
+        </div>
+        <div class="card stat-card accent">
+          <div class="stat-label">Ditukar Hari Ini</div>
+          <div class="stat-value">&mdash;</div>
+        </div>
+      </div>
+
+      <div class="section-title">Penukaran Terbaru</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Nomor Kupon</th><th>Waktu</th><th>Petugas</th></tr>
+          </thead>
+          <tbody id="terbaruBody">
+            <tr><td colspan="3">Memuat...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/nav.js"></script>
+  <script>
+    const session = renderShell("dashboard");
+
+    if (session) {
+
+      if (session.role === "SUPER_ADMIN") {
+        renderMasjidSwitcher();
+      }
+
+      loadDashboard();
+    }
+
+    async function renderMasjidSwitcher() {
+      const wrap = document.getElementById("masjidSwitcherWrap");
+      wrap.innerHTML = '<select class="masjid-switcher" id="masjidSelect"><option value="">Semua Masjid</option></select>';
+
+      try {
+        const list = await Api.call("masjid_list", {});
+        const select = document.getElementById("masjidSelect");
+        (list || []).forEach(function (m) {
+          const opt = document.createElement("option");
+          opt.value = m.id_masjid;
+          opt.textContent = m.nama_masjid;
+          select.appendChild(opt);
+        });
+        select.value = Auth.getTargetMasjid();
+        select.addEventListener("change", function () {
+          Auth.setTargetMasjid(select.value);
+          loadDashboard();
+        });
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    async function loadDashboard() {
+      try {
+        const data = await Api.call("dashboard", {});
+
+        const cards = document.querySelectorAll("#statGrid .stat-value");
+        cards[0].textContent = data.total_kupon;
+        cards[1].textContent = data.sudah_ditukar;
+        cards[2].textContent = data.belum_ditukar;
+        cards[3].textContent = data.hari_ini;
+
+        const body = document.getElementById("terbaruBody");
+
+        if (!data.terbaru || data.terbaru.length === 0) {
+          body.innerHTML = '<tr><td colspan="3">Belum ada penukaran.</td></tr>';
+          return;
+        }
+
+        body.innerHTML = data.terbaru.map(function (row) {
+          return '<tr>' +
+            '<td class="mono">' + row.nomor_kupon + '</td>' +
+            '<td>' + fmtTanggal(row.tanggal) + '</td>' +
+            '<td>' + (row.petugas || "-") + '</td>' +
+          '</tr>';
+        }).join("");
+
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+  </script>
+</body>
+</html>

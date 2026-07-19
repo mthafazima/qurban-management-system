@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kelola Kupon — Kupon Qurban</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+  <div class="app-shell" id="shell">
+    <main class="main">
+      <div class="topbar-bar">
+        <button class="hamburger" id="hamburgerBtn">&#9776;</button>
+      </div>
+      <div class="topbar">
+        <div>
+          <h1>Kelola Kupon</h1>
+          <div class="subtitle" id="totalSubtitle">Memuat data kupon...</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-outline btn-sm" href="cetak.html">Cetak Kupon</a>
+          <span id="masjidSwitcherWrap"></span>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card form-card">
+          <h3 style="font-size:15px;margin-bottom:12px">Tambah Kupon Satuan</h3>
+          <div class="field">
+            <label for="paketSingle">Jenis paket</label>
+            <input type="text" id="paketSingle" value="Daging Qurban">
+          </div>
+          <button class="btn btn-primary btn-block" id="btnAddSingle">Tambah Kupon</button>
+        </div>
+
+        <div class="card form-card">
+          <h3 style="font-size:15px;margin-bottom:12px">Generate Massal</h3>
+          <div class="field-row">
+            <div class="field">
+              <label for="paketBulk">Jenis paket</label>
+              <input type="text" id="paketBulk" value="Daging Qurban">
+            </div>
+            <div class="field">
+              <label for="jumlahBulk">Jumlah</label>
+              <input type="number" id="jumlahBulk" value="10" min="1" max="1000">
+            </div>
+          </div>
+          <button class="btn btn-gold btn-block" id="btnAddBulk">Generate</button>
+        </div>
+      </div>
+
+      <div class="section-title">Daftar Kupon</div>
+
+      <div class="field" style="max-width: 320px; margin-bottom: 16px;">
+        <input type="text" id="searchInput" placeholder="Cari nomor kupon...">
+      </div>
+
+      <div class="ticket-list" id="ticketList">
+        <p class="hint">Memuat...</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/nav.js"></script>
+  <script>
+    const session = renderShell("kupon");
+    let allCoupons = [];
+
+    if (session) {
+      if (session.role === "SUPER_ADMIN") renderMasjidSwitcher();
+
+      loadCoupons();
+      document.getElementById("btnAddSingle").addEventListener("click", addSingle);
+      document.getElementById("btnAddBulk").addEventListener("click", addBulk);
+      document.getElementById("searchInput").addEventListener("input", function () {
+        renderList(filterCoupons(this.value));
+      });
+    }
+
+    async function renderMasjidSwitcher() {
+      const wrap = document.getElementById("masjidSwitcherWrap");
+      wrap.innerHTML = '<select class="masjid-switcher" id="masjidSelect"><option value="">Semua Masjid</option></select>';
+      try {
+        const list = await Api.call("masjid_list", {});
+        const select = document.getElementById("masjidSelect");
+        (list || []).forEach(function (m) {
+          const opt = document.createElement("option");
+          opt.value = m.id_masjid;
+          opt.textContent = m.nama_masjid;
+          select.appendChild(opt);
+        });
+        select.value = Auth.getTargetMasjid();
+        select.addEventListener("change", function () {
+          Auth.setTargetMasjid(select.value);
+          loadCoupons();
+        });
+      } catch (err) { showToast(err.message, true); }
+    }
+
+    async function loadCoupons() {
+      const listEl = document.getElementById("ticketList");
+      listEl.innerHTML = '<p class="hint">Memuat...</p>';
+
+      try {
+        allCoupons = await Api.call("list", {});
+        document.getElementById("totalSubtitle").textContent = allCoupons.length + " kupon terdaftar";
+        renderList(allCoupons);
+      } catch (err) {
+        showToast(err.message, true);
+        listEl.innerHTML = '<p class="hint">Gagal memuat data.</p>';
+      }
+    }
+
+    function filterCoupons(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return allCoupons;
+      return allCoupons.filter(function (c) {
+        return c.nomor_kupon.toLowerCase().indexOf(q) !== -1;
+      });
+    }
+
+    function renderList(data) {
+      const listEl = document.getElementById("ticketList");
+
+      if (!data || data.length === 0) {
+        listEl.innerHTML = '<div class="empty-state"><h3>Belum ada kupon</h3><p>Tambahkan kupon satuan atau generate massal di atas.</p></div>';
+        return;
+      }
+
+      // urutkan: yang terbaru (belum ditukar dulu) tampil di atas berdasar nomor
+      const sorted = data.slice().sort(function (a, b) {
+        return a.nomor_kupon < b.nomor_kupon ? 1 : -1;
+      });
+
+      listEl.innerHTML = sorted.map(function (c, idx) {
+        const urut = c.nomor_kupon.split("-").pop();
+        return '<div class="ticket">' +
+          '<div class="ticket-stub"><div class="stub-no">#' + urut + '</div><div class="stub-label">Urut</div><div class="ticket-perf"></div></div>' +
+          '<div class="ticket-body">' +
+            '<div class="t-nomor">' + c.nomor_kupon + '</div>' +
+            '<div class="t-meta">' + (c.jenis_paket || "-") + (c.tanggal_ditukar ? " &middot; ditukar " + fmtTanggal(c.tanggal_ditukar) + " oleh " + (c.petugas || "-") : "") + '</div>' +
+          '</div>' +
+          '<div class="ticket-side">' +
+            statusBadge(c.status) +
+            '<button class="btn btn-danger btn-sm" data-nomor="' + c.nomor_kupon + '">Hapus</button>' +
+          '</div>' +
+        '</div>';
+      }).join("");
+
+      listEl.querySelectorAll("button[data-nomor]").forEach(function (btn) {
+        btn.addEventListener("click", function () { deleteCoupon(btn.getAttribute("data-nomor")); });
+      });
+    }
+
+    async function addSingle() {
+      const paket = document.getElementById("paketSingle").value.trim() || "Daging Qurban";
+      try {
+        const res = await Api.call("add", { paket });
+        if (!res.success) { showToast(res.message, true); return; }
+        showToast("Kupon " + res.nomor_kupon + " ditambahkan.");
+        loadCoupons();
+      } catch (err) { showToast(err.message, true); }
+    }
+
+    async function addBulk() {
+      const paket = document.getElementById("paketBulk").value.trim() || "Daging Qurban";
+      const jumlah = document.getElementById("jumlahBulk").value || 10;
+
+      const btn = document.getElementById("btnAddBulk");
+      btn.disabled = true;
+      btn.textContent = "Memproses...";
+
+      try {
+        const res = await Api.call("bulk", { paket, jumlah });
+        if (!res.success) { showToast(res.message, true); return; }
+        showToast(res.jumlah + " kupon berhasil dibuat.");
+        loadCoupons();
+      } catch (err) {
+        showToast(err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Generate";
+      }
+    }
+
+    async function deleteCoupon(nomor) {
+      if (!confirm("Hapus kupon " + nomor + "? Tindakan ini tidak bisa dibatalkan.")) return;
+
+      try {
+        const res = await Api.call("delete", { nomor });
+        if (!res.success) { showToast(res.message, true); return; }
+        showToast("Kupon " + nomor + " dihapus.");
+        loadCoupons();
+      } catch (err) { showToast(err.message, true); }
+    }
+  </script>
+</body>
+</html>

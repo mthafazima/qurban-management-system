@@ -64,10 +64,35 @@
     if (session) {
 
       if (session.role === "SUPER_ADMIN") {
-        renderMasjidSwitcher(loadDashboard);
+        renderMasjidSwitcher(function () {
+          loadDashboard();
+          updateSubtitle();
+        }).then(updateSubtitle); // update subtitle awal setelah daftar masjid selesai dimuat
+      } else {
+        updateSubtitle();
       }
 
       loadDashboard();
+    }
+
+    function updateSubtitle() {
+      const el = document.getElementById("pageSubtitle");
+
+      if (session.role !== "SUPER_ADMIN") {
+        el.textContent = session.alamat_masjid
+          ? "Ringkasan kupon qurban \u2014 " + session.alamat_masjid
+          : "Ringkasan kupon qurban";
+        return;
+      }
+
+      const targetId = Auth.getTargetMasjid();
+      const found = targetId ? getMasjidById(targetId) : null;
+
+      if (found) {
+        el.textContent = "Ringkasan kupon qurban \u2014 " + (found.alamat || found.nama_masjid);
+      } else {
+        el.textContent = "Ringkasan kupon qurban dari semua masjid";
+      }
     }
 
     async function loadDashboard() {

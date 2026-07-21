@@ -45,6 +45,7 @@
           <div class="scan-modes">
             <button class="mode-btn active" id="modeQr">Scan QR</button>
             <button class="mode-btn" id="modeManual">Input Nomor</button>
+            <button class="mode-btn" id="modeScanner">Scanner Fisik</button>
           </div>
 
           <div id="qrPane">
@@ -60,6 +61,16 @@
                 <div class="hint">Nomor urut saja (bukan kode lengkap QURB-XXXX-0024).</div>
               </div>
               <button class="btn btn-primary btn-block" id="btnCariNomor">Cari Kupon</button>
+            </div>
+          </div>
+
+          <div id="scannerPane" style="display:none">
+            <div class="card form-card">
+              <div class="field">
+                <label for="scannerInput">Tembak QR kupon ke sini</label>
+                <input type="text" id="scannerInput" placeholder="Arahkan & tembak scanner ke sini" autocomplete="off">
+                <div class="hint">Kolom ini otomatis tetap fokus. Tinggal tembak QR pakai alat scanner — hasilnya otomatis divalidasi begitu alat kirim Enter. Jangan ketik manual di sini.</div>
+              </div>
             </div>
           </div>
         </div>
@@ -81,6 +92,7 @@
     let currentToken = null;
     let scanner = null;
     let scanLocked = false;
+    let scannerMode = false;
 
     if (session) {
       if (session.role === "SUPER_ADMIN") renderMasjidSwitcher();
@@ -88,9 +100,28 @@
 
       document.getElementById("modeQr").addEventListener("click", function () { switchMode("qr"); });
       document.getElementById("modeManual").addEventListener("click", function () { switchMode("manual"); });
+      document.getElementById("modeScanner").addEventListener("click", function () { switchMode("scanner"); });
       document.getElementById("btnCariNomor").addEventListener("click", cariNomor);
       document.getElementById("nomorInput").addEventListener("keydown", function (ev) {
         if (ev.key === "Enter") { ev.preventDefault(); cariNomor(); }
+      });
+
+      const scannerInput = document.getElementById("scannerInput");
+      scannerInput.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Enter") return;
+        ev.preventDefault();
+        const kode = scannerInput.value.trim();
+        scannerInput.value = "";
+        if (!kode) return;
+        validateToken(kode);
+      });
+      // Alat scanner cuma bisa "ngetik" ke elemen yang lagi fokus, jadi kolom
+      // ini dipaksa tetap fokus terus selama mode Scanner Fisik aktif —
+      // petugas gak perlu tap layar dulu sebelum nembak QR.
+      scannerInput.addEventListener("blur", function () {
+        if (scannerMode && !document.getElementById("btnTukar")) {
+          setTimeout(function () { scannerInput.focus(); }, 30);
+        }
       });
     }
 
@@ -144,10 +175,14 @@
     function switchMode(mode) {
       document.getElementById("modeQr").classList.toggle("active", mode === "qr");
       document.getElementById("modeManual").classList.toggle("active", mode === "manual");
+      document.getElementById("modeScanner").classList.toggle("active", mode === "scanner");
       document.getElementById("qrPane").style.display = mode === "qr" ? "block" : "none";
       document.getElementById("manualPane").style.display = mode === "manual" ? "block" : "none";
+      document.getElementById("scannerPane").style.display = mode === "scanner" ? "block" : "none";
 
+      scannerMode = mode === "scanner";
       if (mode === "qr") startScanner(); else stopScanner();
+      if (scannerMode) document.getElementById("scannerInput").focus();
     }
 
     function startScanner() {
@@ -254,7 +289,7 @@
     // konfirmasi — jadi bisa full hands-free pakai scanner-gun.
     document.addEventListener("keydown", function (ev) {
       if (ev.key !== "Enter") return;
-      if (ev.target && ev.target.id === "nomorInput") return; // biar kolom cari nomor punya jalur Enter sendiri
+      if (ev.target && (ev.target.id === "nomorInput" || ev.target.id === "scannerInput")) return; // kolom-kolom ini punya jalur Enter sendiri
       const btnTukar = document.getElementById("btnTukar");
       if (btnTukar && !btnTukar.disabled) {
         ev.preventDefault();
@@ -280,6 +315,7 @@
         document.getElementById("resultWrap").innerHTML = "";
         document.getElementById("nomorInput").value = "";
         currentToken = null;
+        if (scannerMode) document.getElementById("scannerInput").focus();
       } catch (err) {
         showToast(err.message, true);
         btn.disabled = false;

@@ -61,6 +61,7 @@ function renderShell(active) {
     .join("");
 
   const namaMasjid = session.nama_masjid || (isSuper ? "Semua Masjid" : "");
+  const alamatMasjid = isSuper ? "" : (session.alamat_masjid || "");
   const initial = (session.nama || "A").trim().charAt(0).toUpperCase();
 
   const roleLabelMap = {
@@ -79,6 +80,7 @@ function renderShell(active) {
         <div class="brand-text">
           <div class="masjid-name">${namaMasjid || "Kupon Qurban"}</div>
           <div class="app-label">Kupon Qurban</div>
+          ${alamatMasjid ? '<div class="brand-alamat">' + alamatMasjid + '</div>' : ''}
         </div>
       </div>
       <div class="nav-group">
@@ -206,9 +208,24 @@ function updateBrandFromTarget(targetId) {
   const markEl = document.querySelector(".brand-mark");
   if (!nameEl || !markEl) return;
 
+  function setAlamat(text) {
+    let alamatEl = document.querySelector(".brand-text .brand-alamat");
+    if (!text) {
+      if (alamatEl) alamatEl.remove();
+      return;
+    }
+    if (!alamatEl) {
+      alamatEl = document.createElement("div");
+      alamatEl.className = "brand-alamat";
+      document.querySelector(".brand-text").appendChild(alamatEl);
+    }
+    alamatEl.textContent = text;
+  }
+
   if (!targetId) {
     nameEl.textContent = "Semua Masjid";
     markEl.innerHTML = logoImgHtml(APP_LOGO);
+    setAlamat("");
     return;
   }
 
@@ -216,5 +233,6 @@ function updateBrandFromTarget(targetId) {
   if (found) {
     nameEl.textContent = found.nama_masjid;
     markEl.innerHTML = logoImgHtml(found.logo_url);
+    setAlamat(found.alamat || "");
   }
 }

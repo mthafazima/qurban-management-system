@@ -79,9 +79,7 @@
       const el = document.getElementById("pageSubtitle");
 
       if (session.role !== "SUPER_ADMIN") {
-        el.textContent = session.alamat_masjid
-          ? "Ringkasan kupon qurban \u2014 " + session.alamat_masjid
-          : "Ringkasan kupon qurban";
+        el.textContent = "Ringkasan kupon qurban";
         return;
       }
 
@@ -89,7 +87,7 @@
       const found = targetId ? getMasjidById(targetId) : null;
 
       if (found) {
-        el.textContent = "Ringkasan kupon qurban \u2014 " + (found.alamat || found.nama_masjid);
+        el.textContent = "Ringkasan kupon qurban \u2014 " + found.nama_masjid;
       } else {
         el.textContent = "Ringkasan kupon qurban dari semua masjid";
       }

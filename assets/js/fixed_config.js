@@ -14,4 +14,4 @@ const API_URL = "https://script.google.com/macros/s/AKfycbzntFH9Crj2lI_Z7KQ6C1gx
  * atau link https biasa. Kosongkan ("") kalau belum ada, nanti otomatis
  * fallback ke ikon bulan-bintang.
  */
-const APP_LOGO = "";
+const APP_LOGO = "assets/logos/logo-global.png";

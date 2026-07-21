@@ -32,7 +32,7 @@
     display: flex;
     flex-direction: column;
     width: 90mm;
-    height: 46mm;
+    height: 50mm;
     border: 1.5px dashed var(--gold);
     border-radius: var(--radius-m);
     padding: 3mm 4mm;
@@ -42,19 +42,25 @@
     overflow: hidden;
   }
   .tc-top{ display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3mm; flex: 1; min-height: 0; }
-  .tc-head{ display: flex; align-items: center; gap: 1.5mm; margin-bottom: 1.3mm; }
+  .tc-head{ display: flex; align-items: flex-start; gap: 1.5mm; margin-bottom: 1.3mm; }
   .tc-logo{
     width: 6.5mm; height: 6.5mm; border-radius: 50%;
     border: 0.3px solid var(--line); background: var(--paper-alt);
     flex-shrink: 0; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
-    font-size: 7px; color: var(--gold);
+    font-size: 7px; color: var(--gold); margin-top: 0.2mm;
   }
   .tc-logo img{ width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tc-head-text{ min-width: 0; }
   .tc-masjidname{
     font-family: var(--font-display); font-weight: 600; font-size: 8.5px;
     color: var(--green-deep); line-height: 1.15;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44mm;
+  }
+  .tc-alamat{
+    font-size: 5.8px; color: var(--ink-faint); line-height: 1.25;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44mm;
+    margin-top: 0.2mm;
   }
   .ticket-card .tc-eyebrow{ font-size: 6.6px; text-transform: uppercase; letter-spacing: .09em; color: var(--gold); margin-bottom: 1.5mm; }
   .ticket-card .tc-nomor{ font-family: var(--font-mono); font-weight: 700; font-size: 12px; color: var(--ink); }
@@ -146,8 +152,8 @@
     const session = renderShell("kupon");
     let allCoupons = [];
 
-    // Ukuran tiket dikunci di CSS (90mm x 46mm) + jarak antar tiket 3mm.
-    const TICKET_W = 90, TICKET_H = 46, GAP = 3, MARGIN = 10;
+    // Ukuran tiket dikunci di CSS (90mm x 50mm) + jarak antar tiket 3mm.
+    const TICKET_W = 90, TICKET_H = 50, GAP = 3, MARGIN = 10;
 
     const TERMS_TEXT =
       "Kupon berlaku 1x penukaran & wajib dibawa/ditunjukkan saat pengambilan. " +
@@ -195,20 +201,24 @@
       updateEstimate();
     }
 
-    // Tentukan nama & logo masjid yang dipakai di kop tiket.
-    // Non-super-admin selalu pakai masjidnya sendiri (dari sesi login).
-    // Super Admin wajib pilih 1 masjid dulu, karena daftar kupon dari
-    // endpoint "list" tidak membawa info masjid per baris.
+    // Tentukan nama, logo, & alamat masjid yang dipakai di kop tiket.
+    // Non-super-admin: semua field (termasuk alamat) sudah ikut kebawa
+    // dari data login. Super Admin: ambil dari masjid yang lagi dipilih
+    // di dropdown, karena akunnya gak terikat 1 masjid tertentu.
     function getMasjidInfoForPrint() {
       if (session.role !== "SUPER_ADMIN") {
-        return { nama: session.nama_masjid || "", logo: session.logo_masjid || "" };
+        return {
+          nama: session.nama_masjid || "",
+          logo: session.logo_masjid || "",
+          alamat: session.alamat_masjid || ""
+        };
       }
 
       const targetId = Auth.getTargetMasjid();
       if (!targetId) return null;
 
       const found = getMasjidById(targetId);
-      return found ? { nama: found.nama_masjid, logo: found.logo_url } : null;
+      return found ? { nama: found.nama_masjid, logo: found.logo_url, alamat: found.alamat } : null;
     }
 
     async function loadCoupons() {
@@ -295,7 +305,7 @@
         return;
       }
 
-      const masjidInfo = getMasjidInfoForPrint();
+      const masjidInfo = await getMasjidInfoForPrint();
 
       if (session.role === "SUPER_ADMIN" && !masjidInfo) {
         showToast("Pilih masjid dulu di kanan atas sebelum mencetak.", true);
@@ -305,10 +315,8 @@
       applyPageSize();
 
       const namaMasjid = (masjidInfo && masjidInfo.nama) || "Kupon Qurban";
-      const logoUrl = masjidInfo && masjidInfo.logo;
-      const logoHtml = logoUrl
-        ? '<img src="' + logoUrl + '" alt="">'
-        : "\u262A"; // fallback simbol bulan-bintang kalau belum ada logo
+      const alamatMasjid = (masjidInfo && masjidInfo.alamat) || "";
+      const logoHtml = logoImgHtml(masjidInfo && masjidInfo.logo);
 
       const printArea = document.getElementById("printArea");
       printArea.innerHTML = "";
@@ -325,7 +333,10 @@
             '<div>' +
               '<div class="tc-head">' +
                 '<div class="tc-logo">' + logoHtml + '</div>' +
-                '<div class="tc-masjidname">' + namaMasjid + '</div>' +
+                '<div class="tc-head-text">' +
+                  '<div class="tc-masjidname">' + namaMasjid + '</div>' +
+                  (alamatMasjid ? '<div class="tc-alamat">' + alamatMasjid + '</div>' : '') +
+                '</div>' +
               '</div>' +
               '<div class="tc-eyebrow">Kupon Qurban</div>' +
               '<div class="tc-nomor">' + nomor + '</div>' +

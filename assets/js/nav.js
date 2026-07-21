@@ -13,6 +13,28 @@ const ICONS = {
   masjid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 21V11l8-6 8 6v10"/><path d="M9 21v-6h6v6"/><path d="M12 5V2M10 3h4"/></svg>'
 };
 
+// Kalau URL logo yang disimpan bukan direct-link ke file gambar (mis. link
+// viewer Google Drive, bukan link file .jpg/.png langsung), <img> akan gagal
+// dimuat. Daripada nampilin ikon gambar-rusak, otomatis balik ke ikon SVG
+// (bukan karakter Unicode ☪, karena itu suka nyaris gak kelihatan / gak
+// konsisten dirender di berbagai font & printer/PDF).
+const LOGO_FALLBACK_SVG =
+  '<svg viewBox="0 0 24 24" width="58%" height="58%" fill="currentColor">' +
+  '<path d="M14.8 3.6a8.8 8.8 0 1 0 5.8 15A9.8 9.8 0 0 1 14.8 3.6z"/>' +
+  '<path d="M19.2 3.8l.7 1.7 1.7.7-1.7.7-.7 1.7-.7-1.7-1.7-.7 1.7-.7z"/>' +
+  '</svg>';
+
+function handleLogoError(imgEl) {
+  imgEl.onerror = null;
+  imgEl.outerHTML = LOGO_FALLBACK_SVG;
+}
+
+function logoImgHtml(url) {
+  return url
+    ? '<img src="' + url + '" alt="" onerror="handleLogoError(this)">'
+    : LOGO_FALLBACK_SVG;
+}
+
 function renderShell(active) {
 
   const session = Auth.requireLogin();
@@ -53,7 +75,7 @@ function renderShell(active) {
   shell.insertAdjacentHTML("afterbegin", `
     <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <div class="brand-mark">${session.logo_masjid ? '<img src="' + session.logo_masjid + '" alt="">' : "\u262A"}</div>
+        <div class="brand-mark">${logoImgHtml(session.logo_masjid || (isSuper ? APP_LOGO : ""))}</div>
         <div class="brand-text">
           <div class="masjid-name">${namaMasjid || "Kupon Qurban"}</div>
           <div class="app-label">Kupon Qurban</div>
@@ -186,13 +208,13 @@ function updateBrandFromTarget(targetId) {
 
   if (!targetId) {
     nameEl.textContent = "Semua Masjid";
-    markEl.innerHTML = "\u262A";
+    markEl.innerHTML = logoImgHtml(APP_LOGO);
     return;
   }
 
   const found = getMasjidById(targetId);
   if (found) {
     nameEl.textContent = found.nama_masjid;
-    markEl.innerHTML = found.logo_url ? '<img src="' + found.logo_url + '" alt="">' : "\u262A";
+    markEl.innerHTML = logoImgHtml(found.logo_url);
   }
 }

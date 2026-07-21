@@ -10,7 +10,7 @@
 
   <div class="login-shell">
     <form class="login-card" id="loginForm" novalidate>
-      <div class="login-mark">&#9770;</div>
+      <div class="login-mark" id="loginMark">&#9770;</div>
       <h1>Kupon Qurban</h1>
       <p class="subtitle">Masuk untuk mengelola kupon masjid Anda</p>
 
@@ -32,10 +32,15 @@
   <script src="assets/js/config.js"></script>
   <script src="assets/js/auth.js"></script>
   <script src="assets/js/api.js"></script>
+  <script src="assets/js/nav.js"></script>
   <script>
     // Kalau sudah ada sesi aktif, langsung lempar ke dashboard.
     if (Auth.getSession()) {
       window.location.href = "dashboard.html";
+    }
+
+    if (APP_LOGO) {
+      document.getElementById("loginMark").innerHTML = logoImgHtml(APP_LOGO);
     }
 
     const form = document.getElementById("loginForm");

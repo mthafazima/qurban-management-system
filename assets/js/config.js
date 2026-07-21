@@ -4,4 +4,14 @@
  * Cara ambil: buka project Apps Script -> Deploy -> Manage deployments
  * -> Web app -> copy "Web app URL" (yang berakhiran /exec).
  */
-const API_URL = "https://script.google.com/macros/s/AKfycbzntFH9Crj2lI_Z7KQ6C1gxMJMlLln8QVFLQ_adIwvkw7cv502FhoSxhWC5kJ0S8q_s/exec";
+const API_URL = "https://script.google.com/macros/s/GANTI_DENGAN_DEPLOYMENT_ID_KAMU/exec";
+
+/**
+ * Logo aplikasi / Super Admin. Dipakai di halaman login, dan di sidebar
+ * dashboard dkk saat Super Admin sedang memilih "Semua Masjid" (karena
+ * akun Super Admin gak terikat ke satu masjid, jadi gak punya logo masjid
+ * sendiri). Boleh diisi path lokal (mis. "assets/logos/superadmin.png")
+ * atau link https biasa. Kosongkan ("") kalau belum ada, nanti otomatis
+ * fallback ke ikon bulan-bintang.
+ */
+const APP_LOGO = "";

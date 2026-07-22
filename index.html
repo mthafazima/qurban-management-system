@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Masuk — Kupon Qurban</title>
+<script>
+  // Cek sesi SEBELUM body sempat dirender, biar gak ada kedipan halaman
+  // login pas sebenarnya user udah login (dicek lagi lebih lengkap di
+  // bawah lewat Auth.getSession() setelah auth.js dimuat).
+  (function () {
+    var store = /KuponQurbanApp/.test(navigator.userAgent) ? window.localStorage : window.sessionStorage;
+    if (store.getItem("kupon_session")) {
+      location.replace("dashboard.html");
+    }
+  })();
+</script>
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>

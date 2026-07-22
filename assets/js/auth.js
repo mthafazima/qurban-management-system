@@ -2,37 +2,43 @@
  * auth.js
  * Sesi disimpan di sessionStorage (bukan localStorage) supaya otomatis
  * hilang saat tab ditutup — cocok buat perangkat scan bersama di lapangan.
+ *
+ * Pengecualian: kalau dibuka lewat app Android pembungkus (dikenali dari
+ * user agent "KuponQurbanApp"), sesi disimpan di localStorage supaya tidak
+ * perlu login ulang tiap kali app ditutup/di-swipe dari Recents — device
+ * app itu diasumsikan punya masing-masing petugas, bukan device bersama.
  */
 
 const Auth = (function () {
 
   const KEY = "kupon_session";
   const TARGET_KEY = "kupon_target_masjid";
+  const store = /KuponQurbanApp/.test(navigator.userAgent) ? window.localStorage : window.sessionStorage;
 
   function setSession(data) {
-    sessionStorage.setItem(KEY, JSON.stringify(data));
+    store.setItem(KEY, JSON.stringify(data));
   }
 
   function getSession() {
-    const raw = sessionStorage.getItem(KEY);
+    const raw = store.getItem(KEY);
     return raw ? JSON.parse(raw) : null;
   }
 
   function clearSession() {
-    sessionStorage.removeItem(KEY);
-    sessionStorage.removeItem(TARGET_KEY);
+    store.removeItem(KEY);
+    store.removeItem(TARGET_KEY);
   }
 
   function setTargetMasjid(idMasjid) {
-    if (idMasjid) sessionStorage.setItem(TARGET_KEY, idMasjid);
-    else sessionStorage.removeItem(TARGET_KEY);
+    if (idMasjid) store.setItem(TARGET_KEY, idMasjid);
+    else store.removeItem(TARGET_KEY);
   }
 
   function getTargetMasjid() {
     const session = getSession();
     if (!session) return "";
     if (session.role !== "SUPER_ADMIN") return "";
-    return sessionStorage.getItem(TARGET_KEY) || "";
+    return store.getItem(TARGET_KEY) || "";
   }
 
   // Panggil di awal setiap halaman terproteksi.
